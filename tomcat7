@@ -1,0 +1,230 @@
+#!/bin/bash
+#
+# tomcat This shell script takes care of starting and stopping Tomcat7
+#
+# chkconfig: 35 80 20
+#
+### BEGIN INIT INFO
+# Provides: tomcat
+# Required-Start: $network $syslog
+# Required-Stop: $network $syslog
+# Default-Start:
+# Default-Stop:
+# Short-Description: start and stop tomcat7
+### END INIT INFO
+
+# escolha um nome unico para o Tomcat Home
+# nada generico, como apenas "tomcat"
+# escolha por exemplo "tomcat-<versao>-<nome>" 
+TOMCAT_HOME="/opt/apache-tomcat-7.0.59-mobile"
+OWNER=tomcat7
+SHUTDOWN_WAIT=20
+
+# variaveis internas
+TOMCAT_TEMP=$TOMCAT_HOME/temp 
+TOMCAT_WORK=$TOMCAT_HOME/work
+TOMCAT_LOGS=$TOMCAT_HOME/logs
+TOMCAT_WEBAPPS=$TOMCAT_HOME/webapps
+
+# processo do Tomcat 
+tomcat_pid() {
+echo `ps aux | grep org.apache.catalina.startup.Bootstrap | grep $TOMCAT_HOME | grep -v grep | awk '{ print $2 }'`
+}
+ 
+# noclean-start tomcat
+noclean-start() {
+check-who-is
+pid=$(tomcat_pid)
+if [ -n "$pid" ]; then
+ echo " "
+ echo "Tomcat7 ja esta rodando (pid: $pid)"
+ echo " " 
+else
+ echo "Subindo Tomcat7 sem limpar temporarios "
+ echo "Ajustando limites do S.O."
+ ulimit -Hn 16384 2>/dev/null
+ ulimit -Sn 16384 2>/dev/null
+ cd $TOMCAT_HOME/bin && $TOMCAT_HOME/bin/startup.sh
+fi
+return 0
+}
+
+# start tomcat
+start() {
+check-who-is
+pid=$(tomcat_pid)
+if [ -n "$pid" ]; then
+ echo " "
+ echo "Tomcat7 ja esta rodando (pid: $pid)"
+ echo " " 
+else
+ clean-temp
+ clean-webapps-temp
+ echo "Subindo Tomcat7 "
+ setup-os
+ cd $TOMCAT_HOME/bin && $TOMCAT_HOME/bin/startup.sh
+fi
+return 0
+}
+
+# nologs start tomcat
+nologs-start() {
+check-who-is
+pid=$(tomcat_pid)
+if [ -n "$pid" ]; then
+ echo "Tomcat7 ja esta rodando (pid: $pid)"
+else
+ clean-logs
+ clean-temp
+ clean-webapps-temp
+ echo "Subindo Tomcat7 "
+ setup-os
+ cd $TOMCAT_HOME/bin && $TOMCAT_HOME/bin/startup.sh
+fi
+return 0
+}
+
+# stop tomcat 
+stop() {
+check-who-is
+pid=$(tomcat_pid)
+if [ -n "$pid" ]; then
+ echo "Derrubando Tomcat7"
+ cd $TOMCAT_HOME/bin && $TOMCAT_HOME/bin/shutdown.sh 
+ let kwait=$SHUTDOWN_WAIT
+ count=0
+ count_by=5
+ until [ `ps -p $pid | grep -c $pid` = '0' ] || [ $count -gt $kwait ]
+ do
+  echo "Esperando os processos cairem. Timeout antes de matar o processo: ${count}/${kwait}"
+  sleep $count_by
+  let count=$count+$count_by;
+ done 
+ if [ $count -gt $kwait ]; then
+  echo "Matando os processos que nao pararam depois de $SHUTDOWN_WAIT segundos"
+  kill -9 $pid
+  kill -9 $pid
+  kill -9 $pid
+ fi
+else
+ echo " "
+ echo "O Tomcat7 nao esta no ar"
+ echo " "
+fi
+ 
+return 0
+}
+# ajusta SO
+setup-os() {
+echo "Ajustando limites do S.O."
+ulimit -Hn 16384 2>/dev/null
+ulimit -Sn 16384 2>/dev/null
+}
+
+# limpa temp
+clean-temp() {
+echo "Limpando temporarios..."
+rm -rf $TOMCAT_TEMP $TOMCAT_WORK
+mkdir  $TOMCAT_TEMP $TOMCAT_WORK
+}
+
+# limpa webapps temp
+clean-webapps-temp() {
+echo "Limpando temporarios webapps..."
+cd $TOMCAT_WEBAPPS
+ls -dl */ | grep -v manager | grep -v ROOT | xargs rm -rf
+}
+
+# limpa logs
+clean-logs() {
+ echo "Limpando logs..."
+ rm -rf $TOMCAT_LOGS
+ mkdir  $TOMCAT_LOGS
+}
+
+# valida usuario
+check-who-is() {
+WHO=`whoami`
+if [ $WHO != $OWNER ]; then
+  echo " "
+  echo "[$WHO] por favor rode o script logado como [$OWNER] =) "
+  echo " "
+  exit 0
+fi
+}
+
+# status 
+status() { 
+pid=$(tomcat_pid)
+if [ -n "$pid" ]; then
+echo " "
+echo "O Tomcat7 esta rodando em $TOMCAT_HOME !"
+echo " "
+echo "PID | CPU | MEM | stime | cmd "
+ps axo pid,%cpu,%mem,stime,cmd | grep $pid | grep -v grep
+else
+echo " "
+echo "O Tomcat7 nao esta no ar"
+echo " "
+fi
+}
+
+# help
+help() {
+echo " "
+echo " *** Servico do Tomcat em $TOMCAT_HOME *** " 
+echo " "
+echo " service $0 <opcoes>"
+echo " "
+echo " * Opcoes para subir:"
+echo "  start ----------- inicia o Tomcat limpando todos os temporarios"
+echo "  noclean-start --- inicia o Tomcat sem limpar arquivos temporarios"
+echo "  nologs-start ---- inicia o Tomcat limpando todos temporarios e logs"
+echo " "
+echo " * Opcoes de restart:"
+echo " restart ---------- derruba e inicia o Tomcat limpando todos os temporarios"
+echo " noclean-restart -- derruba e inicia o Tomcat sem limpar arquivos temporarios"
+echo " nologs-restart --- derruba e inicia o Tomcat limpando todos temporarios e logs"
+echo " "
+echo " * Opcoes de derrubar:"
+echo " stop  - derruba o Tomcat"
+echo " "
+echo " * Outras:"
+echo " status  - mostra o processo e consumo do Tomcat"
+echo " "
+}
+
+# main 
+case $1 in
+start)
+start
+;;
+noclean-start)
+noclean-start
+;;
+nologs-start)
+nologs-start
+;;
+stop)
+stop
+;;
+restart)
+stop
+start
+;;
+noclean-restart)
+stop
+noclean-start
+;;
+nologs-restart)
+stop
+nologs-start
+;;
+status)
+status
+;;
+*)
+help
+esac
+ 
+exit 0
